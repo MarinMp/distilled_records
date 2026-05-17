@@ -109,8 +109,33 @@ Con relaciones 1:1, 1:N y N:M.
 
 ## 🍃 6. Base de Datos MongoDB
 
-PENDIENTE
+### Nombre de la base de datos
+`licorera_logs`
 
+### Justificación Técnica
+
+MongoDB se implementa como base de datos NoSQL **complementaria** al sistema relacional. Mientras MySQL gestiona la información transaccional crítica (facturas, productos, clientes, inventario, proveedores), MongoDB se utiliza para **logs, historial, auditoría y eventos del sistema**, evitando sobrecargar la BD relacional con datos que crecen rápidamente.
+
+### Colecciones
+
+| Colección | Descripción |
+|---|---|
+| `logs_usuarios` | Registro de acciones realizadas por usuarios |
+| `auditoria_facturas` | Historial de operaciones sobre facturas |
+| `eventos_sistema` | Eventos internos del sistema |
+| `historial_consultas` | Consultas realizadas en reportes |
+
+### Flujo de integración con MySQL
+
+```
+Usuario genera factura
+        ↓
+MySQL registra la venta
+        ↓
+Trigger actualiza inventario
+        ↓
+Backend registra log en MongoDB
+```
 ---
 
 ## 📋 7. Requerimientos Funcionales
