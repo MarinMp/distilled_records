@@ -36,7 +36,7 @@ Cuenta con:
        ▼               ▼
 ┌─────────────┐  ┌─────────────┐
 │    MySQL    │  │   MongoDB   │
-│  RHEL 8.8  │  │  RHEL 8.8  │
+│  RHEL 8.8   │  │  RHEL 8.8   │
 └─────────────┘  └─────────────┘
 ```
 
@@ -49,7 +49,7 @@ Cuenta con:
 | **Frontend** | Por definir | Interfaz de demostración de operaciones principales |
 | **Backend** | Java, Spring Boot | API REST, lógica de aplicación y conexión con BD |
 | **Base de Datos Relacional** | MySQL | Persistencia principal, lógica de negocio en BD |
-| **Base de Datos NoSQL** | MongoDB | Datos noSQL y registros históricos |
+| **Base de Datos NoSQL** | MongoDB | Datos no estructurados y registros históricos |
 | **Virtualización** | Red Hat Enterprise Linux 8.8 | Entorno de despliegue virtualizado |
 | **Control de Versiones** | Git / GitHub | Gestión del código fuente y trabajo colaborativo |
 
