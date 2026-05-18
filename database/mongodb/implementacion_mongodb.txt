@@ -1,0 +1,146 @@
+========================================
+IMPLEMENTACIÓN MONGODB — DISTILLED RECORDS
+Base de datos: distilled_records_nosql
+========================================
+
+
+-- PASO 1: Seleccionar base de datos --
+
+use distilled_records_nosql
+
+
+-- PASO 2: logs_actividad --
+
+db.logs_actividad.insertOne({
+  timestamp: new Date(),
+  usuario: {
+    id_mysql: "EMP001",
+    username: "cajero1",
+    rol: "CAJERO"
+  },
+  accion: {
+    modulo: "VENTAS",
+    operacion: "REGISTRAR_VENTA",
+    descripcion: "Venta registrada exitosamente"
+  },
+  contexto: {
+    id_referencia_mysql: 105,
+    tabla_mysql: "VENTA",
+    ip: "192.168.1.20"
+  },
+  resultado: "EXITOSO",
+  duracion_ms: 312
+})
+
+
+-- PASO 3: sesiones_usuario --
+
+db.sesiones_usuario.insertOne({
+  id_empleado_mysql: "EMP001",
+  username: "cajero1",
+  token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+  creado_en: new Date(),
+  expira_en: new Date(new Date().getTime() + 8*60*60*1000),
+  ip_origen: "192.168.1.20",
+  activa: true,
+  ultimo_acceso: new Date(),
+  modulos_visitados: ["VENTAS", "INVENTARIO", "REPORTES"]
+})
+
+
+-- PASO 4: alertas_inventario --
+
+db.alertas_inventario.insertOne({
+  id_producto_mysql: 12,
+  nombre_producto: "Glenfiddich 12 Years 700ml",
+  tipo_alerta: "STOCK_BAJO",
+  stock_actual: 3,
+  stock_minimo: 10,
+  unidades_faltantes: 7,
+  proveedor: {
+    id_mysql: "PROV001",
+    nombre: "Licores del Valle S.A.S",
+    telefono: "3001234567"
+  },
+  fecha_alerta: new Date(),
+  estado: "PENDIENTE",
+  atendida_por: null
+})
+
+
+-- PASO 5: reportes_cache --
+
+db.reportes_cache.insertOne({
+  tipo_reporte: "VENTAS_DIARIAS",
+  parametros: { fecha_inicio: "2026-05-01", fecha_fin: "2026-05-18" },
+  generado_por: "admin",
+  generado_en: new Date(),
+  expira_en: new Date(new Date().getTime() + 12*60*60*1000),
+  resultado: {
+    total_ventas: 45,
+    monto_total: 12750000,
+    producto_mas_vendido: "Glenfiddich 12 Years",
+    empleado_top: "cajero1",
+    detalle_por_dia: [
+      { fecha: "2026-05-01", ventas: 3, monto: 850000 },
+      { fecha: "2026-05-02", ventas: 5, monto: 1200000 }
+    ]
+  }
+})
+
+
+-- PASO 6: Verificar colecciones --
+
+show collections
+db.logs_actividad.find()
+db.sesiones_usuario.find()
+db.alertas_inventario.find()
+db.reportes_cache.find()
+
+
+-- PASO 7: Agregaciones --
+
+-- 7.1 Top usuarios con más acciones
+db.logs_actividad.aggregate([
+  { $match: { resultado: "EXITOSO" } },
+  { $group: {
+      _id: "$usuario.username",
+      total_acciones: { $sum: 1 },
+      modulos: { $addToSet: "$accion.modulo" }
+  }},
+  { $sort: { total_acciones: -1 } },
+  { $limit: 5 }
+])
+
+-- 7.2 Productos con stock bajo por proveedor
+db.alertas_inventario.aggregate([
+  { $match: { estado: "PENDIENTE" } },
+  { $group: {
+      _id: "$proveedor.nombre",
+      productos_alertados: { $sum: 1 },
+      unidades_faltantes: { $sum: "$unidades_faltantes" },
+      productos: { $push: "$nombre_producto" }
+  }},
+  { $sort: { productos_alertados: -1 } }
+])
+
+-- 7.3 Actividad del sistema por módulo y hora
+db.logs_actividad.aggregate([
+  { $addFields: { hora: { $hour: "$timestamp" } } },
+  { $group: {
+      _id: { modulo: "$accion.modulo", hora: "$hora" },
+      cantidad: { $sum: 1 },
+      duracion_promedio_ms: { $avg: "$duracion_ms" }
+  }},
+  { $sort: { "_id.hora": 1 } }
+])
+
+-- 7.4 Reportes generados por usuario
+db.reportes_cache.aggregate([
+  { $group: {
+      _id: "$generado_por",
+      total_reportes: { $sum: 1 },
+      tipos: { $addToSet: "$tipo_reporte" }
+  }},
+  { $sort: { total_reportes: -1 } }
+])
