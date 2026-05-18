@@ -1,0 +1,156 @@
+CREATE TABLE IF NOT EXISTS AUDITORIA_VENTA (
+  ID_AUDITORIA INT AUTO_INCREMENT PRIMARY KEY,
+  ID_VENTA INT,
+  ACCION VARCHAR(50),
+  FECHA_EVENTO TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  USUARIO_BD VARCHAR(100) DEFAULT (CURRENT_USER())
+);
+
+
+-- Funcion: Calcular subtotal
+DELIMITER $$
+CREATE FUNCTION fn_subtotal(precio INT, cantidad INT)
+RETURNS DECIMAL(10,2)
+DETERMINISTIC
+BEGIN
+  RETURN ROUND(precio * cantidad, 2);
+END$$
+DELIMITER ;
+
+
+-- Funcion: Calcular IVA
+DELIMITER $$
+CREATE FUNCTION fn_calcular_iva(subtotal DECIMAL(10,2))
+RETURNS DECIMAL(10,2)
+DETERMINISTIC
+BEGIN
+  RETURN ROUND(subtotal * 0.19, 2);
+END$$
+DELIMITER ;
+
+
+-- Trigger: Validar Stock
+DELIMITER $$
+CREATE TRIGGER trg_detalle_bi_validar
+BEFORE INSERT ON DETALLE_VENTA
+FOR EACH ROW
+BEGIN
+  DECLARE v_stock INT;
+
+  IF NEW.CANTIDAD_PRODUCTOS <= 0 THEN
+    SIGNAL SQLSTATE '45000'
+    SET MESSAGE_TEXT = 'Cantidad inválida';
+  END IF;
+
+  SELECT i.CANTIDAD_DISPONIBLE INTO v_stock
+  FROM PRODUCTO p
+  JOIN INVENTARIO i ON p.ID_INVENTARIO = i.ID_INVENTARIO
+  WHERE p.ID_PRODUCTO = NEW.ID_PRODUCTO;
+
+  IF v_stock < NEW.CANTIDAD_PRODUCTOS THEN
+    SIGNAL SQLSTATE '45000'
+    SET MESSAGE_TEXT = 'Stock insuficiente';
+  END IF;
+END$$
+DELIMITER ;
+
+
+-- Trigger: Actualizar Inventario + Auditoria
+DELIMITER $$
+CREATE TRIGGER trg_detalle_ai_update
+AFTER INSERT ON DETALLE_VENTA
+FOR EACH ROW
+BEGIN
+  -- Descontar inventario
+  UPDATE INVENTARIO i
+  JOIN PRODUCTO p ON p.ID_INVENTARIO = i.ID_INVENTARIO
+  SET i.CANTIDAD_DISPONIBLE = i.CANTIDAD_DISPONIBLE - NEW.CANTIDAD_PRODUCTOS
+  WHERE p.ID_PRODUCTO = NEW.ID_PRODUCTO;
+
+  -- Auditoría
+  INSERT INTO AUDITORIA_VENTA (ID_VENTA, ACCION)
+  VALUES (NEW.ID_VENTA, 'DETALLE REGISTRADO Y STOCK ACTUALIZADO');
+END$$
+DELIMITER ;
+
+
+-- Trigger: Auditoria de Venta Directa
+DELIMITER $$
+CREATE TRIGGER trg_venta_ai_auditoria
+AFTER INSERT ON VENTA
+FOR EACH ROW
+BEGIN
+  INSERT INTO AUDITORIA_VENTA (ID_VENTA, ACCION)
+  VALUES (NEW.ID_VENTA, 'VENTA CREADA');
+END$$
+DELIMITER ;
+
+
+-- Procedimiento: Transajes + Auditoria
+DELIMITER $$
+CREATE PROCEDURE sp_registrar_venta_simple(
+  IN p_cliente VARCHAR(15),
+  IN p_empleado VARCHAR(15),
+  IN p_producto INT,
+  IN p_cantidad INT,
+  IN p_fecha DATE
+)
+BEGIN
+  DECLARE v_id_venta INT;
+  DECLARE v_precio INT;
+  DECLARE v_subtotal DECIMAL(10,2);
+  DECLARE v_iva DECIMAL(10,2);
+
+  -- Manejo de errores
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    -- Auditoría de error
+    INSERT INTO AUDITORIA_VENTA (ID_VENTA, ACCION)
+    VALUES (NULL, 'ERROR EN TRANSACCION DE VENTA');
+
+    ROLLBACK;
+  END;
+
+  START TRANSACTION;
+
+  -- Crear venta
+  INSERT INTO VENTA (MONTO, FECHA, ID_CLIENTE, ID_EMPLEADO)
+  VALUES (0, p_fecha, p_cliente, p_empleado);
+
+  SET v_id_venta = LAST_INSERT_ID();
+
+  -- Obtener precio
+  SELECT PRECIO INTO v_precio
+  FROM PRODUCTO
+  WHERE ID_PRODUCTO = p_producto;
+
+  IF v_precio IS NULL THEN
+    SIGNAL SQLSTATE '45000'
+    SET MESSAGE_TEXT = 'Producto no existe';
+  END IF;
+
+  -- Calcular valores
+  SET v_subtotal = fn_subtotal(v_precio, p_cantidad);
+  SET v_iva = fn_calcular_iva(v_subtotal);
+
+  -- Insertar detalle
+  INSERT INTO DETALLE_VENTA
+  (CANTIDAD_PRODUCTOS, SUBTOTAL, IVA, ID_VENTA, ID_PRODUCTO)
+  VALUES (p_cantidad, v_subtotal, v_iva, v_id_venta, p_producto);
+
+  -- Actualizar monto total
+  UPDATE VENTA
+  SET MONTO = (
+    SELECT SUM(SUBTOTAL + IVA)
+    FROM DETALLE_VENTA
+    WHERE ID_VENTA = v_id_venta
+  )
+  WHERE ID_VENTA = v_id_venta;
+
+  -- Auditoría exitosa
+  INSERT INTO AUDITORIA_VENTA (ID_VENTA, ACCION)
+  VALUES (v_id_venta, 'VENTA COMPLETA EXITOSA');
+
+  COMMIT;
+END$$
+DELIMITER ;
