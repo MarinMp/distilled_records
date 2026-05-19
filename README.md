@@ -12,7 +12,7 @@ El proyecto busca resolver las deficiencias operativas de **Distilled Records**,
 Cuenta con:
 
 - **Backend (API REST)**: desarrollado en **Spring Boot**.
-- **Frontend (Aplicación Web)**: por definir.
+- **Frontend (Aplicación Web)**: desarrollado en **PrimeFaces (JSF)** integrado con Spring Boot.
 - **Base de Datos relacional**: implementada en **MySQL** sobre **Red Hat Enterprise Linux 8.8**.
 - **Base de Datos NoSQL**: implementada en **MongoDB** para datos no relacionales.
 - **Virtualización**: solución desplegada en máquina virtual con **Red Hat Enterprise Linux 8.8**.
@@ -24,7 +24,7 @@ Cuenta con:
 ```
 ┌──────────────────────────────┐
 │          FRONTEND            │
-│        (Por definir)         │
+│        PrimeFaces (JSF)      │
 └──────────────┬───────────────┘
                │ REST API
                ▼
@@ -46,7 +46,7 @@ Cuenta con:
 
 | Capa | Tecnología | Descripción |
 |------|------------|-------------|
-| **Frontend** | Por definir | Interfaz de demostración de operaciones principales |
+| **Frontend** | PrimeFaces + JSF | Interfaz de demostración de operaciones principales |
 | **Backend** | Java, Spring Boot | API REST, lógica de aplicación y conexión con BD |
 | **Base de Datos Relacional** | MySQL | Persistencia principal, lógica de negocio en BD |
 | **Base de Datos NoSQL** | MongoDB | Datos no estructurados y registros históricos |
@@ -63,23 +63,13 @@ distilled_records/
 ├── frontend/              # Aplicación web
 ├── database/
 │   ├── mysql/             # Scripts SQL (creación, inserción, procedures, triggers)
-│   └── mongodb/           # Modelos documentales y scripts MongoDB
+│   └── mongodb/           # Modelos documentales MongoDB
 └── README.md
 ```
 
 ---
 
 ## 🗄️ 5. Base de Datos MySQL
-
-### Conexión
-Configurada en el archivo `application.properties` del backend:
-```
-spring.datasource.url=jdbc:mysql://<IP_VM>:3306/distilled_records?useSSL=false&serverTimezone=UTC
-spring.datasource.username=distilled_user
-spring.datasource.password=distilled_pass
-spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
-spring.jpa.hibernate.ddl-auto=validate
-```
 
 ### Entidades del Modelo (Peter Chen)
 
@@ -110,31 +100,31 @@ Con relaciones 1:1, 1:N y N:M.
 ## 🍃 6. Base de Datos MongoDB
 
 ### Nombre de la base de datos
-`licorera_logs`
+`distilled_records_nosql`
 
 ### Justificación Técnica
 
-MongoDB se implementa como base de datos NoSQL **complementaria** al sistema relacional. Mientras MySQL gestiona la información transaccional crítica (facturas, productos, clientes, inventario, proveedores), MongoDB se utiliza para **logs, historial, auditoría y eventos del sistema**, evitando sobrecargar la BD relacional con datos que crecen rápidamente.
+MongoDB complementa a MySQL almacenando información de **alta variabilidad estructural y alta frecuencia de escritura** que no se adapta eficientemente al modelo relacional: logs de actividad de la aplicación, gestión de sesiones de usuario, alertas de inventario y caché de reportes pesados.
 
 ### Colecciones
 
-| Colección | Descripción |
-|---|---|
-| `logs_usuarios` | Registro de acciones realizadas por usuarios |
-| `auditoria_facturas` | Historial de operaciones sobre facturas |
-| `eventos_sistema` | Eventos internos del sistema |
-| `historial_consultas` | Consultas realizadas en reportes |
+| Colección | Descripción | Referencia MySQL |
+|---|---|---|
+| `logs_actividad` | Registro de acciones del usuario desde la aplicación web | ID_EMPLEADO, ID_VENTA |
+| `sesiones_usuario` | Sesiones activas, token JWT y contexto de navegación | ID_EMPLEADO |
+| `alertas_inventario` | Alertas automáticas de stock bajo con contexto enriquecido | ID_PRODUCTO |
+| `reportes_cache` | Resultados cacheados de reportes pesados para optimizar rendimiento | — |
 
 ### Flujo de integración con MySQL
 
 ```
-Usuario genera factura
-        ↓
-MySQL registra la venta
-        ↓
-Trigger actualiza inventario
-        ↓
-Backend registra log en MongoDB
+1. Login empleado    →  sesiones_usuario (MongoDB)
+2. Registro venta    →  CALL sp_registrar_venta_simple() (MySQL)
+                     → Trigger: AUDITORIA_VENTA (MySQL)
+                     → Trigger: descuenta INVENTARIO (MySQL)
+3. Log de acción     →  logs_actividad (MongoDB)
+4. Stock bajo        →  alertas_inventario (MongoDB)
+5. Consulta reporte  →  reportes_cache (MongoDB)
 ```
 ---
 
@@ -151,6 +141,9 @@ Backend registra log en MongoDB
 | RF07 | Consulta de reportes de ventas e inventarios |
 | RF08 | Reglas de negocio implementadas en la BD relacional |
 | RF09 | Integridad y consistencia mediante transacciones y excepciones |
+| RF10 | Registro de logs de actividad en MongoDB |
+| RF11 | Gestión de sesiones de usuario en MongoDB |
+| RF12 | Alertas automáticas de inventario bajo |
 
 ---
 
